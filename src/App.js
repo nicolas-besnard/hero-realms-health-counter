@@ -20,6 +20,8 @@ import {
 
 import KeepAwake from 'react-native-keep-awake';
 
+import Stats from './Components/Stats';
+
 let window = Dimensions.get('window')
 
 const logoImage = require('./images/logo.png');
@@ -31,7 +33,9 @@ export default class App extends Component<{}> {
     super(props);
 
     this.state = {
-      counter: 50
+      counter: 50,
+      health: 0,
+      damage: 0
     };
 
     AsyncStorage.getItem('health', function (err, value) {
@@ -39,8 +43,6 @@ export default class App extends Component<{}> {
       this.setHealth(JSON.parse(value) || 50)
     }.bind(this));
 
-    this.increment = this.increment.bind(this);
-    this.decrement = this.decrement.bind(this);
     this.setHealth = this.setHealth.bind(this);
     this.onResetGame = this.onResetGame.bind(this);
     this.resetgame = this.resetGame.bind(this);
@@ -60,6 +62,7 @@ export default class App extends Component<{}> {
 
   resetGame() {
     this.setHealth(50);
+    this.cancelActions();
   }
 
   setHealth(newHealth) {
@@ -76,39 +79,99 @@ export default class App extends Component<{}> {
     });
   }
 
-  increment() {
+  incrementStats = (stats) => () => {
     this.setState((prevState, props) => {
-      const newHealth = prevState.counter + 1;
+      const newValue = prevState[stats] + 1;
+
+      return {
+        [stats]: newValue
+      };
+    });
+  };
+
+  validateAction = () => {
+    this.setState((prevState, props) => {
+      const { health: currentHealth, damage: currentDamage } = prevState;
+      const newValue = prevState.counter + currentHealth - currentDamage;
 
       try {
-        AsyncStorage.setItem('health', JSON.stringify(newHealth));
+        AsyncStorage.setItem('health', JSON.stringify(newValue));
       } catch (error) {
         // Error saving data
       }
 
       return {
-        counter: newHealth
-      };
+        health: 0,
+        damage: 0,
+        counter: newValue
+      }
     });
   }
 
-  decrement() {
-    this.setState((prevState, props) => {
-      const newHealth = prevState.counter - 1;
-
-      try {
-        AsyncStorage.setItem('health', JSON.stringify(newHealth));
-      } catch (error) {
-        // Error saving data
-      }
-
-      return {
-        counter: newHealth
-      };
+  cancelActions = () => {
+    this.setState({
+      health: 0,
+      damage: 0,
     });
+  };
+
+  hasActions() {
+    const { health: currentHealth, damage: currentDamage } = this.state;
+
+    return currentHealth > 0 || currentDamage > 0;
+  }
+
+  renderValidateButton = () => { 
+    if (this.hasActions()) {
+      return (
+        <View>
+          <TouchableHighlight
+            style={styles.validateButton}
+            underlayColor="rgba(0, 0, 0, 0)"
+            color="rgba(0, 0, 0, 0)"
+            onPress={this.validateAction}
+          >
+            <Text style={styles.validateButtonText}>Done?</Text>
+          </TouchableHighlight>
+        </View>
+      );
+    } else {
+      // Need an empty element has `TouchableHighlight` can't have no child
+      // This also prevent the UI to "bump" when the text appears
+      return (
+        <View style={styles.validateButton}>
+          <Text style={styles.validateButtonText}></Text>
+        </View>
+      );
+    }
+  }
+
+  renderCancelActionsButton = () => {
+    if (this.hasActions()) {
+      return (
+        <View>
+          <TouchableHighlight
+            style={styles.validateButton}
+            underlayColor="rgba(0, 0, 0, 0)"
+            color="rgba(0, 0, 0, 0)"
+            onPress={this.cancelActions}
+          >
+            <Text style={styles.validateButtonText}>Cancel Actions?</Text>
+          </TouchableHighlight>
+        </View>
+      );
+    } else {
+      return (
+        <View style={styles.validateButton}>
+          <Text style={styles.validateButtonText}></Text>
+        </View>
+      );
+    }
   }
 
   render() {
+    const { health: currentHealth, damage: currentDamage } = this.state;
+
     return (
       <View style={styles.container}>
         <KeepAwake />
@@ -120,34 +183,34 @@ export default class App extends Component<{}> {
           />
         </View>
         <View style={styles.healthContainer}>
-          <TouchableHighlight
-            style={[styles.button, styles.decrementButton]}
-            onPress={this.decrement}
-            underlayColor="rgba(232, 40, 40, 0)"
-          >
-            <Image
-              source={damageImage}
-              style={styles.actionImage}
-            />
-          </TouchableHighlight>
+          <Stats
+            currentValue={currentDamage}
+            onPress={this.incrementStats('damage')}
+            imagePath={damageImage}
+            color="rgb(232, 40, 40)"
+            style={{flexGrow: 25}}
+          />
+          <View style={styles.healthAndReset}>
+            {this.renderValidateButton()}
 
-          <Text style={styles.health}>
-            {this.state.counter}
-          </Text>
-          <TouchableHighlight
-            style={[styles.button, styles.incrementButton]}
-            underlayColor="rgba(92, 210, 78, 0)"
-            onPress={this.increment}
-          >
-            <Image
-              source={healthImage} 
-              style={styles.actionImage}
-            />
-          </TouchableHighlight>
+            <View style={styles.healthTextContainer}>
+              <Text style={styles.healthText}>
+                {this.state.counter}
+              </Text>
+            </View>
+          </View>
+          <Stats
+            currentValue={currentHealth}
+            onPress={this.incrementStats('health')}
+            imagePath={healthImage}
+            color="rgb(92, 210, 78)"
+            style={{flexGrow: 25}}
+          />
         </View>
+        {this.renderCancelActionsButton()}
         <View>
           <TouchableHighlight
-            style={[styles.button, styles.incrementButton]}
+            style={styles.button}
             underlayColor="blue"
             onPress={this.onResetGame}
           >
@@ -164,20 +227,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5FCFF',
   },
+  healthAndReset: {
+    flex: 1,
+    flexDirection: 'column'
+  },
   actionImage: {
     width: 100,
     resizeMode: Image.resizeMode.contain,
   },
   healthContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row'
+    flexDirection: 'row',
   },
-  health: {
-    fontSize: 50,
-    flexGrow: 50,
-    textAlign: 'center'
+  healthTextContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  healthText: {
+    fontSize: 60,
+    textAlign: 'center',
+  },
+  validateButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  validateButtonText: {
+    textAlign: 'center',
+    fontSize: 20,
+    lineHeight: 40,
+    height: 40
   },
   resetButton: {
     color: 'red'
@@ -187,6 +266,5 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: 'center',
-    flexGrow: 25,
   },
 });
